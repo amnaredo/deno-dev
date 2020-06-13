@@ -1,2 +1,1 @@
-# deno-dev
-Deno experimentation
+# NASA Mission Control Deno Project
