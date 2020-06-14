@@ -1,12 +1,40 @@
-import { Application, Context } from "https://deno.land/x/oak@v5.0.0/mod.ts";
+import { log, Application, send } from "./deps.ts";
+
+import api from "./api.ts";
+import * as planets from "./models/planets.ts";
 
 const app = new Application();
 const PORT = 8000;
 
+await log.setup({
+  handlers: {
+    console: new log.handlers.ConsoleHandler("INFO"),
+  },
+  loggers: {
+    default: {
+      level: "INFO",
+      handlers: ["console"],
+    },
+  },
+});
+
+app.addEventListener("error", (event) => {
+  log.error(event.error);
+});
+
+app.use(async (ctx, next) => {
+  try {
+    await next();
+  } catch (err) {
+    ctx.response.body = "Internal server error";
+    throw err;
+  }
+});
+
 app.use(async (ctx, next) => {
   await next();
   const time = ctx.response.headers.get("X-Response-Time");
-  console.log(`${ctx.request.method} ${ctx.request.url}: ${time}`);
+  log.info(`${ctx.request.method} ${ctx.request.url}: ${time}`);
 });
 
 app.use(async (ctx, next) => {
@@ -16,20 +44,27 @@ app.use(async (ctx, next) => {
   ctx.response.headers.set("X-Response-Time", `${delta}ms`);
 });
 
-app.use(async (ctx, next) => {
-  ctx.response.body = `
-  {___     {__      {_         {__ __        {_       
-  {_ {__   {__     {_ __     {__    {__     {_ __     
-  {__ {__  {__    {_  {__     {__          {_  {__    
-  {__  {__ {__   {__   {__      {__       {__   {__   
-  {__   {_ {__  {______ {__        {__   {______ {__  
-  {__    {_ __ {__       {__ {__    {__ {__       {__ 
-  {__      {__{__         {__  {__ __  {__         {__
-                  Mission Control API`;
-  await next();
+app.use(api.routes());
+app.use(api.allowedMethods());
+
+app.use(async (ctx) => {
+  const filepath = ctx.request.url.pathname;
+  const fileWhitelist = [
+    "/index.html",
+    "/javascripts/script.js",
+    "/stylesheets/style.css",
+    "/images/favicon.png",
+    "/videos/space.mp4",
+  ];
+  if (fileWhitelist.includes(filepath)) {
+    await send(ctx, filepath, {
+      root: `${Deno.cwd()}/public`,
+    });
+  }
 });
 
 if (import.meta.main) {
+  log.info(`Starting server on port ${PORT}....`);
   await app.listen({
     port: PORT,
   });
